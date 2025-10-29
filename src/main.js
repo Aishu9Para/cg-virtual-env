@@ -37,7 +37,7 @@ sunLight.position.set(40, 60, 30);
 sunLight.castShadow = true;
 scene.add(sunLight);
 
-// Add visible "sun" sphere
+// Visible sun sphere
 const sunGeo = new THREE.SphereGeometry(4, 32, 32);
 const sunMat = new THREE.MeshBasicMaterial({ color: 0xffdd66 });
 const sun = new THREE.Mesh(sunGeo, sunMat);
@@ -49,7 +49,6 @@ function createCloud(x, y, z, scale = 1) {
   const cloud = new THREE.Group();
   const puffMat = new THREE.MeshToonMaterial({ color: 0xffffff });
   const puffGeo = new THREE.SphereGeometry(3 * scale, 16, 16);
-
   for (let i = 0; i < 3; i++) {
     const puff = new THREE.Mesh(puffGeo, puffMat);
     puff.position.set(i * 3 * scale, Math.random() * 1, Math.random() * 2);
@@ -78,7 +77,7 @@ island.rotation.x = -Math.PI / 2;
 island.receiveShadow = true;
 scene.add(island);
 
-// Gentle island shape
+// Gentle island bump
 {
   const pos = islandGeom.attributes.position;
   for (let i = 0; i < pos.count; i++) {
@@ -150,14 +149,14 @@ let girl, girlMixer;
 const dolphins = [];
 let boat;
 
-// === Girl (shoreline) ===
+// === Girl ===
 loader.load(
   "models/girl.glb",
   (gltf) => {
     girl = gltf.scene;
     girl.scale.set(1, 1, 1);
-    girl.position.set(0, 2.5, 15); // standing on the beach
-    girl.rotation.y = Math.PI; // facing the sea
+    girl.position.set(0, 2.5, 15);
+    girl.rotation.y = Math.PI;
     girl.traverse((o) => {
       if (o.isMesh) {
         o.castShadow = true;
@@ -176,37 +175,38 @@ loader.load(
   (err) => console.error("Girl load error:", err)
 );
 
-// === Dolphins (hop together in straight line far in sea) ===
-loader.load(
-  "models/Dolphin.glb",
-  (gltf) => {
-    const base = gltf.scene;
-    base.scale.set(0.25, 0.25, 0.25); // smaller dolphins
-    base.traverse((o) => {
-      if (o.isMesh) {
-        o.castShadow = true;
-        o.receiveShadow = true;
-      }
-    });
+// === Dolphins ===
+loader.load("models/dolphin.glb", (gltf) => {
+  const base = gltf.scene;
+  base.scale.set(0.6, 0.6, 0.6);
+  base.traverse((o) => {
+    if (o.isMesh) {
+      o.castShadow = true;
+      o.receiveShadow = true;
+      o.material = new THREE.MeshStandardMaterial({
+        color: 0x9cd9ff,
+        metalness: 0.3,
+        roughness: 0.4,
+      });
+    }
+  });
 
-    // Create two dolphins next to each other
-    const d1 = base.clone();
-    const d2 = base.clone();
-    scene.add(d1);
-    scene.add(d2);
-    dolphins.push(d1, d2);
-  },
-  undefined,
-  (err) => console.error("Dolphin load error:", err)
-);
+  const dolphin1 = base.clone();
+  dolphin1.position.set(-6, 1.2, -16);
+  const dolphin2 = base.clone();
+  dolphin2.position.set(6, 1.2, -18);
+  scene.add(dolphin1);
+  scene.add(dolphin2);
+  dolphins.push(dolphin1, dolphin2);
+});
 
-// === Boat (floating near island) ===
+// === Boat ===
 loader.load(
   "models/Boat.glb",
   (gltf) => {
     boat = gltf.scene;
-    boat.scale.set(1.3, 1.3, 1.3); // Smaller boat
-    boat.position.set(10, 1.2, -25); // clearly visible near island
+    boat.scale.set(1.0, 1.0, 1.0); // smaller
+    boat.position.set(10, 1.2, -25);
     boat.rotation.y = Math.PI / 5;
     boat.traverse((o) => {
       if (o.isMesh) {
@@ -227,34 +227,31 @@ function animate() {
   requestAnimationFrame(animate);
   const t = clock.getElapsedTime();
   const delta = clock.getDelta();
-
   controls.update();
 
-  // Gentle sea movement
+  // Sea waves
   const posSea = seaGeom.attributes.position;
   for (let i = 0; i < posSea.count; i++) {
     const x = posSea.getX(i),
       z = posSea.getY(i);
-    const waveHeight =
+    const wave =
       Math.sin(x * 0.05 + t * 0.8) * 0.05 + Math.cos(z * 0.07 + t * 0.6) * 0.05;
-    posSea.setZ(i, waveHeight);
+    posSea.setZ(i, wave);
   }
   posSea.needsUpdate = true;
 
-  // Girl animation
   if (girlMixer) girlMixer.update(delta);
 
-  // Dolphins hop gently in a straight line far in sea
+  // Dolphins move gently
   dolphins.forEach((d, i) => {
-    const baseZ = -80; // farther away from island
-    const speed = 1.5;
-    const hop = Math.abs(Math.sin(t * 2)) * 2; // up-down hopping
-    const xMove = Math.sin(t * 0.6) * 25; // left-right straight motion
-    d.position.set(xMove + i * 5, 1.5 + hop, baseZ);
+    const zPos = -16 - i * 2;
+    const hop = Math.abs(Math.sin(t * 1.5 + i)) * 1.0;
+    const xMove = Math.sin(t * 0.4 + i * 0.5) * 6;
+    d.position.set(xMove + i * 2, 1.1 + hop, zPos);
     d.rotation.y = xMove > 0 ? Math.PI : 0;
   });
 
-  // Boat gentle bobbing
+  // Boat motion
   if (boat) {
     boat.position.y = 1.2 + Math.sin(t * 1.5) * 0.3;
     boat.rotation.z = Math.sin(t * 0.8) * 0.05;
@@ -268,8 +265,56 @@ function animate() {
 
   renderer.render(scene, camera);
 }
-
 animate();
+
+// === Day/Night Toggle Button ===
+const button = document.createElement("button");
+button.textContent = "🌙 Toggle Night Mode";
+Object.assign(button.style, {
+  position: "absolute",
+  top: "20px",
+  right: "20px",
+  padding: "10px 18px",
+  background: "#fff",
+  border: "none",
+  borderRadius: "12px",
+  fontSize: "14px",
+  cursor: "pointer",
+  boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+});
+document.body.appendChild(button);
+
+let isNight = false;
+button.onclick = () => {
+  isNight = !isNight;
+  if (isNight) {
+    scene.background = new THREE.Color(0x0a0a1a);
+    ambientLight.intensity = 0.5;
+    sunLight.intensity = 0.4;
+    sun.visible = false;
+
+    const moonLight = new THREE.DirectionalLight(0x99ccff, 0.5);
+    moonLight.position.set(-20, 50, 30);
+    moonLight.name = "moonLight";
+    scene.add(moonLight);
+
+    button.textContent = "☀ Toggle Day Mode";
+    button.style.background = "#222";
+    button.style.color = "#fff";
+  } else {
+    scene.background = new THREE.Color(0x87ceeb);
+    ambientLight.intensity = 0.7;
+    sunLight.intensity = 1.3;
+    sun.visible = true;
+
+    const oldMoon = scene.getObjectByName("moonLight");
+    if (oldMoon) scene.remove(oldMoon);
+
+    button.textContent = "🌙 Toggle Night Mode";
+    button.style.background = "#fff";
+    button.style.color = "#000";
+  }
+};
 
 // === Resize ===
 window.addEventListener("resize", () => {
