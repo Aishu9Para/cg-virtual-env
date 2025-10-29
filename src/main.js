@@ -37,7 +37,18 @@ sunLight.position.set(40, 60, 30);
 sunLight.castShadow = true;
 scene.add(sunLight);
 
-// Visible sun sphere
+// 🌞 Realistic shadow configuration
+sunLight.shadow.mapSize.width = 2048;
+sunLight.shadow.mapSize.height = 2048;
+sunLight.shadow.camera.near = 10;
+sunLight.shadow.camera.far = 200;
+sunLight.shadow.camera.left = -60;
+sunLight.shadow.camera.right = 60;
+sunLight.shadow.camera.top = 60;
+sunLight.shadow.camera.bottom = -60;
+sunLight.shadow.bias = -0.001;
+
+// Visible "sun"
 const sunGeo = new THREE.SphereGeometry(4, 32, 32);
 const sunMat = new THREE.MeshBasicMaterial({ color: 0xffdd66 });
 const sun = new THREE.Mesh(sunGeo, sunMat);
@@ -77,7 +88,7 @@ island.rotation.x = -Math.PI / 2;
 island.receiveShadow = true;
 scene.add(island);
 
-// Gentle island bump
+// Gentle island shape
 {
   const pos = islandGeom.attributes.position;
   for (let i = 0; i < pos.count; i++) {
@@ -105,43 +116,89 @@ sea.position.y = 0.1;
 sea.receiveShadow = true;
 scene.add(sea);
 
-// === Palms ===
-function createPalm(x, z) {
-  const palm = new THREE.Group();
-  const trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.4, 0.6, 8, 8),
-    toonMat(0x8b5a2b)
-  );
-  trunk.position.y = 4;
-  palm.add(trunk);
+// === 🌴 Improved Coconut Trees (smaller + spaced) ===
+function createCoconutTree(x, z) {
+  const tree = new THREE.Group();
 
-  const leafGeo = new THREE.CylinderGeometry(0, 0.3, 5, 3, 1);
-  const leafMat = toonMat(0x228b22);
-  palm.userData = { leaves: [] };
-  for (let i = 0; i < 6; i++) {
+  // Shorter Trunk
+  const trunkHeight = 16 + Math.random() * 2; // reduced overall height
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.45, 0.7, trunkHeight, 12),
+    new THREE.MeshStandardMaterial({
+      color: 0x8b5a2b,
+      roughness: 0.8,
+      metalness: 0.1,
+    })
+  );
+  trunk.position.y = trunkHeight / 2;
+  trunk.castShadow = true;
+  trunk.receiveShadow = true;
+  tree.add(trunk);
+
+  // 🌿 Realistic Coconut Fronds
+  const leafMat = new THREE.MeshStandardMaterial({
+    color: 0x1f6b2b, // deep green
+    emissive: 0x143d18,
+    roughness: 0.7,
+    metalness: 0.1,
+    side: THREE.DoubleSide,
+  });
+
+  const leafGeo = new THREE.PlaneGeometry(8, 2, 8, 1); // smaller fronds
+  for (let i = 0; i < 8; i++) {
     const leaf = new THREE.Mesh(leafGeo, leafMat);
-    leaf.position.y = 8;
-    leaf.rotation.z = Math.PI / 3;
-    leaf.rotation.y = (i * Math.PI) / 3;
-    palm.add(leaf);
-    palm.userData.leaves.push(leaf);
+    leaf.position.y = trunkHeight;
+    leaf.rotation.y = (i * Math.PI * 2) / 8;
+    leaf.rotation.z = -Math.PI / 4;
+
+    const pos = leaf.geometry.attributes.position;
+    for (let j = 0; j < pos.count; j++) {
+      const x = pos.getX(j);
+      pos.setZ(j, Math.sin((x / 8) * Math.PI) * 0.7);
+    }
+    pos.needsUpdate = true;
+
+    leaf.castShadow = true;
+    leaf.receiveShadow = true;
+    tree.add(leaf);
   }
 
-  palm.position.set(x, 0.5, z);
-  scene.add(palm);
-  return palm;
+  // 🥥 Light-green Coconuts
+  const coconutMat = new THREE.MeshStandardMaterial({
+    color: 0xa8d47a, // lighter green coconuts
+    roughness: 0.4,
+  });
+  const coconutGeo = new THREE.SphereGeometry(0.45, 16, 16);
+
+  const numCoconuts = 3 + Math.floor(Math.random() * 2);
+  for (let i = 0; i < numCoconuts; i++) {
+    const nut = new THREE.Mesh(coconutGeo, coconutMat);
+    const angle = (i * Math.PI * 2) / numCoconuts;
+    nut.position.set(Math.sin(angle) * 0.7, trunkHeight - 1.0, Math.cos(angle) * 0.7);
+    nut.castShadow = true;
+    tree.add(nut);
+  }
+
+  tree.position.set(x, 0.5, z);
+  tree.castShadow = true;
+  tree.receiveShadow = true;
+  scene.add(tree);
+  return tree;
 }
 
-const palms = [];
-const palmPositions = [
-  [-8, -6],
-  [6, -5],
-  [-3, 3],
-  [5, 2],
-  [0, -8],
-  [-10, 2],
-];
-palmPositions.forEach(([x, z]) => palms.push(createPalm(x, z)));
+// 🌴 Randomly spaced trees around island (avoid girl area)
+const trees = [];
+for (let i = 0; i < 8; i++) {
+  const angle = Math.random() * Math.PI * 2;
+  const radius = 10 + Math.random() * 8;
+  const x = Math.cos(angle) * radius;
+  const z = Math.sin(angle) * radius;
+
+  // Skip tree positions near the girl (front area)
+  if (z > 10 && Math.abs(x) < 5) continue;
+
+  trees.push(createCoconutTree(x, z));
+}
 
 // === Load Models ===
 const loader = new GLTFLoader();
@@ -176,36 +233,34 @@ loader.load(
 );
 
 // === Dolphins ===
-loader.load("models/dolphin.glb", (gltf) => {
-  const base = gltf.scene;
-  base.scale.set(0.6, 0.6, 0.6);
-  base.traverse((o) => {
-    if (o.isMesh) {
-      o.castShadow = true;
-      o.receiveShadow = true;
-      o.material = new THREE.MeshStandardMaterial({
-        color: 0x9cd9ff,
-        metalness: 0.3,
-        roughness: 0.4,
-      });
-    }
-  });
+loader.load(
+  "models/Dolphin.glb",
+  (gltf) => {
+    const base = gltf.scene;
+    base.scale.set(0.25, 0.25, 0.25);
+    base.traverse((o) => {
+      if (o.isMesh) {
+        o.castShadow = true;
+        o.receiveShadow = true;
+      }
+    });
 
-  const dolphin1 = base.clone();
-  dolphin1.position.set(-6, 1.2, -16);
-  const dolphin2 = base.clone();
-  dolphin2.position.set(6, 1.2, -18);
-  scene.add(dolphin1);
-  scene.add(dolphin2);
-  dolphins.push(dolphin1, dolphin2);
-});
+    const d1 = base.clone();
+    const d2 = base.clone();
+    scene.add(d1);
+    scene.add(d2);
+    dolphins.push(d1, d2);
+  },
+  undefined,
+  (err) => console.error("Dolphin load error:", err)
+);
 
 // === Boat ===
 loader.load(
   "models/Boat.glb",
   (gltf) => {
     boat = gltf.scene;
-    boat.scale.set(1.0, 1.0, 1.0); // smaller
+    boat.scale.set(1.3, 1.3, 1.3);
     boat.position.set(10, 1.2, -25);
     boat.rotation.y = Math.PI / 5;
     boat.traverse((o) => {
@@ -227,47 +282,47 @@ function animate() {
   requestAnimationFrame(animate);
   const t = clock.getElapsedTime();
   const delta = clock.getDelta();
+
   controls.update();
 
-  // Sea waves
+  // Sea movement
   const posSea = seaGeom.attributes.position;
   for (let i = 0; i < posSea.count; i++) {
     const x = posSea.getX(i),
       z = posSea.getY(i);
-    const wave =
+    const waveHeight =
       Math.sin(x * 0.05 + t * 0.8) * 0.05 + Math.cos(z * 0.07 + t * 0.6) * 0.05;
-    posSea.setZ(i, wave);
+    posSea.setZ(i, waveHeight);
   }
   posSea.needsUpdate = true;
 
   if (girlMixer) girlMixer.update(delta);
 
-  // Dolphins move gently
+  // Dolphins
   dolphins.forEach((d, i) => {
-    const zPos = -16 - i * 2;
-    const hop = Math.abs(Math.sin(t * 1.5 + i)) * 1.0;
-    const xMove = Math.sin(t * 0.4 + i * 0.5) * 6;
-    d.position.set(xMove + i * 2, 1.1 + hop, zPos);
-    d.rotation.y = xMove > 0 ? Math.PI : 0;
+    const baseZ = -80;
+    const speed = 0.8;
+    const cycle = t * speed + (i * Math.PI) / 2;
+    const xMove = Math.sin(cycle) * 40;
+    const yMove = Math.sin(cycle * 2) * 3;
+    const waterLevel = 0.1;
+    d.position.set(xMove + i * 5, waterLevel + yMove, baseZ);
+    d.rotation.y = Math.cos(cycle) > 0 ? Math.PI : 0;
+    d.rotation.z = Math.sin(cycle * 2) * 0.3;
   });
 
-  // Boat motion
+  // Boat gentle bobbing
   if (boat) {
     boat.position.y = 1.2 + Math.sin(t * 1.5) * 0.3;
     boat.rotation.z = Math.sin(t * 0.8) * 0.05;
   }
 
-  // Palm sway
-  palms.forEach((p) => {
-    const sway = Math.sin(t * 1.2 + p.position.x) * 0.08;
-    p.rotation.z = sway;
-  });
-
   renderer.render(scene, camera);
 }
+
 animate();
 
-// === Day/Night Toggle Button ===
+// === 🌗 Day/Night Toggle Button ===
 const button = document.createElement("button");
 button.textContent = "🌙 Toggle Night Mode";
 Object.assign(button.style, {
@@ -292,12 +347,10 @@ button.onclick = () => {
     ambientLight.intensity = 0.5;
     sunLight.intensity = 0.4;
     sun.visible = false;
-
-    const moonLight = new THREE.DirectionalLight(0x99ccff, 0.5);
+    const moonLight = new THREE.DirectionalLight(0x99ccff, 0.6);
     moonLight.position.set(-20, 50, 30);
     moonLight.name = "moonLight";
     scene.add(moonLight);
-
     button.textContent = "☀ Toggle Day Mode";
     button.style.background = "#222";
     button.style.color = "#fff";
@@ -306,10 +359,8 @@ button.onclick = () => {
     ambientLight.intensity = 0.7;
     sunLight.intensity = 1.3;
     sun.visible = true;
-
     const oldMoon = scene.getObjectByName("moonLight");
     if (oldMoon) scene.remove(oldMoon);
-
     button.textContent = "🌙 Toggle Night Mode";
     button.style.background = "#fff";
     button.style.color = "#000";
