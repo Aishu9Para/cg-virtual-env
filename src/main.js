@@ -33,6 +33,15 @@ document.body.appendChild(renderer.domElement);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.target.set(0, 4, 0);
+// Update your OrbitControls setup
+controls.enableDamping = true;
+controls.enablePan = true;
+controls.enableZoom = true;
+controls.maxPolarAngle = Math.PI; // full 360 vertical movement
+controls.enableRotate = true;
+
+controls.minDistance = 10;
+controls.maxDistance = 150;
 
 // ======== LIGHTING ========
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
@@ -84,50 +93,85 @@ function createCloud(x, y, z, scale = 1) {
 ].forEach(([x, y, z, s]) => createCloud(x, y, z, s));
 
 // ======== ISLAND ========
-const islandGeom = new THREE.CircleGeometry(30, 84);
+// ======== BIGGER ISLAND ========
+// Make island bigger and bumpier
+const islandGeom = new THREE.CircleGeometry(60, 120);
 const islandMat = new THREE.MeshToonMaterial({ color: 0xffe4b5 });
 const island = new THREE.Mesh(islandGeom, islandMat);
 island.rotation.x = -Math.PI / 2;
 island.receiveShadow = true;
 scene.add(island);
 
+// Create simple terrain height variation
 const pos = islandGeom.attributes.position;
 for (let i = 0; i < pos.count; i++) {
-  const x = pos.getX(i),
-    y = pos.getY(i);
+  const x = pos.getX(i);
+  const y = pos.getY(i);
   const dist = Math.sqrt(x * x + y * y);
-  const height = Math.max(0, 1.2 - dist * 0.08);
+  const height = Math.max(0, 3 - dist * 0.08) + Math.random() * 0.3;
   pos.setZ(i, height);
 }
 pos.needsUpdate = true;
 
-// ======== SEA ========
-const seaGeom = new THREE.PlaneGeometry(250, 250, 100, 100);
-const seaMat = new THREE.MeshPhongMaterial({
-  color: SEA_COLOR,
-  shininess: 100,
-  transparent: true,
-  opacity: 0.95,
-  flatShading: true,
-});
-const sea = new THREE.Mesh(seaGeom, seaMat);
-sea.rotation.x = -Math.PI / 2;
-sea.position.y = 0.1;
-sea.receiveShadow = true;
-scene.add(sea);
+// ======== ADDITIONAL MODELS ON ISLAND ========
+// ======== ADDITIONAL MODELS ON ISLAND ========
+const loader = new GLTFLoader();
 
-// ======== TREES ========
-function createCoconutTree(x, z) {
+// Helper: get island height at any (x, z)
+function getIslandHeight(x, z) {
+  const dist = Math.sqrt(x * x + z * z);
+  // This matches the formula you used to create the island terrain
+  const baseHeight = Math.max(0, 3 - dist * 0.08) + Math.random() * 0.3;
+  return baseHeight;
+}
+
+const objects = [
+  { file: "Campfire.glb", scale: 1.5, pos: [5, 0, 6], rotY: 0 },
+  { file: "Chest.glb", scale: 1.5, pos: [-8, 0, -5], rotY: Math.PI / 3 },
+  {
+    file: "Chest-with-Gold.glb",
+    scale: 1.3,
+    pos: [-12, 0, 10],
+    rotY: -Math.PI / 4,
+  },
+  { file: "Coin.glb", scale: 0.7, pos: [-10, 0, 12], rotY: 0 },
+  { file: "Parchment.glb", scale: 1.2, pos: [2, 0, 10], rotY: 0 },
+  { file: "Scroll.glb", scale: 1.1, pos: [3, 0, 9], rotY: 0 },
+  { file: "Statue.glb", scale: 2.5, pos: [10, 0, -10], rotY: Math.PI / 1.5 },
+  { file: "Rock.glb", scale: 3.0, pos: [14, 0, 8], rotY: 0 },
+  { file: "Rocks.glb", scale: 3.5, pos: [-15, 0, -12], rotY: 0 },
+];
+
+objects.forEach((obj) => {
+  loader.load(`models/${obj.file}`, (gltf) => {
+    const model = gltf.scene;
+    const [x, , z] = obj.pos;
+    const y = getIslandHeight(x, z) + 0.5; // lift slightly above terrain
+    model.position.set(x, y, z);
+    model.scale.set(obj.scale, obj.scale, obj.scale);
+    model.rotation.y = obj.rotY;
+    model.traverse((o) => {
+      if (o.isMesh) {
+        o.castShadow = true;
+        o.receiveShadow = true;
+      }
+    });
+    scene.add(model);
+  });
+});
+
+// ======== TREES & ROCKS ACROSS ISLAND ========
+function createCoconutTree(x, z, heightBoost = 0) {
   const tree = new THREE.Group();
-  const trunkHeight = 14 + Math.random() * 3;
+  const trunkHeight = 14 + Math.random() * 3 + heightBoost;
   const trunk = new THREE.Mesh(
     new THREE.CylinderGeometry(0.45, 0.7, trunkHeight, 12),
     new THREE.MeshStandardMaterial({ color: 0x8b5a2b, roughness: 0.8 })
   );
   trunk.position.y = trunkHeight / 2;
-  trunk.castShadow = true;
   tree.add(trunk);
 
+  // Leaves
   const leafMat = new THREE.MeshStandardMaterial({
     color: 0x1f6b2b,
     emissive: 0x143d18,
@@ -146,10 +190,10 @@ function createCoconutTree(x, z) {
       pos.setZ(j, Math.sin((x / 8) * Math.PI) * 0.7);
     }
     pos.needsUpdate = true;
-    leaf.castShadow = true;
     tree.add(leaf);
   }
 
+  // Coconuts
   const coconutGeo = new THREE.SphereGeometry(0.45, 16, 16);
   const coconutMat = new THREE.MeshStandardMaterial({ color: 0xa8d47a });
   for (let i = 0; i < 3 + Math.floor(Math.random() * 2); i++) {
@@ -160,26 +204,43 @@ function createCoconutTree(x, z) {
       trunkHeight - 1.0,
       Math.cos(angle) * 0.7
     );
-    nut.castShadow = true;
     tree.add(nut);
   }
 
-  tree.position.set(x, 0.5, z);
-  tree.castShadow = true;
+  tree.position.set(x, 1.5, z); // keep above terrain
   scene.add(tree);
 }
 
-for (let i = 0; i < 8; i++) {
+// Generate 20 trees randomly across island
+for (let i = 0; i < 35; i++) {
+  // instead of 20
   const angle = Math.random() * Math.PI * 2;
-  const radius = 10 + Math.random() * 8;
+  const radius = 8 + Math.random() * 40;
   const x = Math.cos(angle) * radius;
   const z = Math.sin(angle) * radius;
-  if (z > 10 && Math.abs(x) < 5) continue;
-  createCoconutTree(x, z);
+  if (Math.sqrt(x * x + z * z) < 50) createCoconutTree(x, z);
+}
+
+for (let i = 0; i < 15; i++) {
+  // instead of 8
+  const rock = new THREE.Mesh(
+    new THREE.DodecahedronGeometry(3 + Math.random() * 2),
+    new THREE.MeshStandardMaterial({
+      color: 0x888888,
+      roughness: 1.0,
+      metalness: 0.2,
+    })
+  );
+  const angle = Math.random() * Math.PI * 2;
+  const radius = 15 + Math.random() * 40;
+  rock.position.set(Math.cos(angle) * radius, 1, Math.sin(angle) * radius);
+  rock.castShadow = true;
+  rock.receiveShadow = true;
+  scene.add(rock);
 }
 
 // ======== MODELS ========
-const loader = new GLTFLoader();
+
 let girlMixer;
 const dolphins = [];
 let boat;
@@ -187,10 +248,20 @@ let boat;
 // Girl
 loader.load("models/girl.glb", (gltf) => {
   const girl = gltf.scene;
+  const x = 0;
+  const z = 15;
+  const y = getIslandHeight(x, z) + 2.0; // lift slightly above terrain
+
+  girl.position.set(x, y, z);
   girl.scale.set(1, 1, 1);
-  girl.position.set(0, 2.5, 15);
   girl.rotation.y = Math.PI;
-  girl.traverse((o) => o.isMesh && (o.castShadow = o.receiveShadow = true));
+
+  girl.traverse((o) => {
+    if (o.isMesh) {
+      o.castShadow = true;
+      o.receiveShadow = true;
+    }
+  });
   scene.add(girl);
 
   if (gltf.animations.length) {
@@ -219,6 +290,21 @@ loader.load("models/Boat.glb", (gltf) => {
   boat.traverse((o) => o.isMesh && (o.castShadow = o.receiveShadow = true));
   scene.add(boat);
 });
+
+// ======== SEA ========
+const seaGeom = new THREE.PlaneGeometry(300, 300, 100, 100);
+const seaMat = new THREE.MeshStandardMaterial({
+  color: SEA_COLOR,
+  transparent: true,
+  opacity: 0.9,
+  roughness: 0.8,
+  metalness: 0.2,
+});
+const sea = new THREE.Mesh(seaGeom, seaMat);
+sea.rotation.x = -Math.PI / 2;
+sea.position.y = 0.5;
+sea.receiveShadow = true;
+scene.add(sea);
 
 // ======== ANIMATION LOOP ========
 const clock = new THREE.Clock();
@@ -271,6 +357,63 @@ function animate() {
   renderer.render(scene, camera);
 }
 animate();
+
+// ======== GIRL MOVEMENT CONTROLS ========
+let moveEnabled = false;
+let moveSpeed = 0.25;
+const keyState = {};
+
+// Track pressed keys
+window.addEventListener(
+  "keydown",
+  (e) => (keyState[e.key.toLowerCase()] = true)
+);
+window.addEventListener(
+  "keyup",
+  (e) => (keyState[e.key.toLowerCase()] = false)
+);
+
+// Toggle movement control using 'm'
+window.addEventListener("keydown", (e) => {
+  if (e.key.toLowerCase() === "m") {
+    moveEnabled = !moveEnabled;
+    console.log(`Girl movement: ${moveEnabled ? "ON" : "OFF"}`);
+  }
+});
+
+function moveGirl(delta) {
+  if (!moveEnabled || !window.girlModel) return;
+
+  const direction = new THREE.Vector3();
+  const moveVector = new THREE.Vector3();
+
+  // Forward/backward (W/S)
+  if (keyState["w"]) moveVector.z -= 1;
+  if (keyState["s"]) moveVector.z += 1;
+
+  // Left/right (A/D)
+  if (keyState["a"]) moveVector.x -= 1;
+  if (keyState["d"]) moveVector.x += 1;
+
+  if (moveVector.length() > 0) {
+    moveVector.normalize();
+
+    // Rotate girl to face move direction
+    const targetAngle = Math.atan2(moveVector.x, moveVector.z);
+    window.girlModel.rotation.y = targetAngle;
+
+    // Apply movement
+    const speed = moveSpeed * delta * 60; // frame-rate independent
+    window.girlModel.position.x += moveVector.x * speed;
+    window.girlModel.position.z += moveVector.z * speed;
+
+    // Adjust height to island surface
+    const x = window.girlModel.position.x;
+    const z = window.girlModel.position.z;
+    const y = getIslandHeight(x, z) + 2.0;
+    window.girlModel.position.y = y;
+  }
+}
 
 // ======== DAY/NIGHT TOGGLE (🌙 Moon Included) ========
 const button = document.createElement("button");
