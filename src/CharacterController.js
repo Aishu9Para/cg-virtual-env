@@ -1,13 +1,5 @@
 import * as THREE from "three";
 
-/**
- * CharacterController
- * - ArrowUp: move forward
- * - ArrowDown: move backward
- * - ArrowLeft: turn left
- * - ArrowRight: turn right
- * - Camera follows behind smoothly
- */
 export class CharacterController {
   constructor(girl, camera, enableCameraFollow = true) {
     this.girl = girl;
@@ -21,10 +13,11 @@ export class CharacterController {
       ArrowRight: false,
     };
 
-    // Movement parameters
     this.moveSpeed = 0.25;
-    this.turnSpeed = 2.0; // radians per second
-    this.cameraOffset = new THREE.Vector3(0, 5, 8); // relative camera position behind girl
+    this.turnSpeed = 2.0;
+
+    // ✅ camera is behind (-Z) relative to character
+    this.cameraOffset = new THREE.Vector3(0, 5, -10);
 
     document.addEventListener("keydown", (e) => this.#onKeyDown(e));
     document.addEventListener("keyup", (e) => this.#onKeyUp(e));
@@ -47,45 +40,35 @@ export class CharacterController {
   update(delta) {
     if (!this.girl) return;
 
-    // ======== ROTATION (Left/Right Arrows) ========
-    if (this.keys.ArrowLeft) {
-      this.girl.rotation.y += this.turnSpeed * delta;
-    }
-    if (this.keys.ArrowRight) {
-      this.girl.rotation.y -= this.turnSpeed * delta;
-    }
+    // ======== ROTATION ========
+    if (this.keys.ArrowLeft) this.girl.rotation.y += this.turnSpeed * delta;
+    if (this.keys.ArrowRight) this.girl.rotation.y -= this.turnSpeed * delta;
 
-    // ======== MOVEMENT (Forward/Backward) ========
-    const direction = new THREE.Vector3(
-      Math.sin(this.girl.rotation.y),
-      0,
-      Math.cos(this.girl.rotation.y)
-    );
+    // ======== MOVEMENT (local forward/back) ========
+    const forward = new THREE.Vector3(0, 0, 1);
+    forward.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.girl.rotation.y);
+    forward.normalize();
 
-    if (this.keys.ArrowUp) {
-      this.girl.position.addScaledVector(direction, this.moveSpeed);
-    }
-    if (this.keys.ArrowDown) {
-      this.girl.position.addScaledVector(direction, -this.moveSpeed);
-    }
+    if (this.keys.ArrowUp)
+      this.girl.position.addScaledVector(forward, this.moveSpeed);
+    if (this.keys.ArrowDown)
+      this.girl.position.addScaledVector(forward, -this.moveSpeed);
 
-    // ======== Keep Girl on Terrain ========
+    // ======== TERRAIN HEIGHT ========
     const dist = Math.sqrt(
       this.girl.position.x ** 2 + this.girl.position.z ** 2
     );
     const groundHeight = Math.max(0, 2.5 - dist * 0.08);
     this.girl.position.y = groundHeight + 2.4;
 
-    // ======== CAMERA FOLLOW ========
+    // ======== CAMERA FOLLOW (always behind character) ========
     if (this.enableCameraFollow && this.camera) {
-      // camera offset behind the girl based on her facing
-      const offsetRotated = this.cameraOffset
+      const offset = this.cameraOffset
         .clone()
         .applyAxisAngle(new THREE.Vector3(0, 1, 0), this.girl.rotation.y);
+      const desiredPos = this.girl.position.clone().add(offset);
 
-      const desiredPos = this.girl.position.clone().add(offsetRotated);
-      this.camera.position.lerp(desiredPos, 0.15);
-
+      this.camera.position.lerp(desiredPos, 0.1);
       this.camera.lookAt(
         this.girl.position.x,
         this.girl.position.y + 2,
