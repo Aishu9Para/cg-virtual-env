@@ -54,27 +54,148 @@ const sun = new THREE.Mesh(
 sun.position.set(80, 60, -60);
 scene.add(sun);
 
-// ======== ISLAND ========
+// ======== BIGGER ISLAND ========
+// Make island bigger and bumpier
 const islandGeom = new THREE.CircleGeometry(60, 120);
-const islandMat = new THREE.MeshStandardMaterial({ color: 0xffe4b5 });
+const islandMat = new THREE.MeshToonMaterial({ color: 0xffe4b5 });
 const island = new THREE.Mesh(islandGeom, islandMat);
 island.rotation.x = -Math.PI / 2;
 island.receiveShadow = true;
 scene.add(island);
 
+// Create simple terrain height variation
 const pos = islandGeom.attributes.position;
 for (let i = 0; i < pos.count; i++) {
   const x = pos.getX(i);
   const y = pos.getY(i);
   const dist = Math.sqrt(x * x + y * y);
-  const height = Math.max(0, 2.5 - dist * 0.08) + Math.random() * 0.2;
+  const height = Math.max(0, 3 - dist * 0.08) + Math.random() * 0.3;
   pos.setZ(i, height);
 }
 pos.needsUpdate = true;
 
+const loader = new GLTFLoader();
+
+const objects = [
+  { file: "Campfire.glb", scale: 1.5, pos: [5, 0, 6], rotY: 0 },
+  { file: "Chest.glb", scale: 1.5, pos: [-8, 0, -5], rotY: Math.PI / 3 },
+  {
+    file: "Chest-with-Gold.glb",
+    scale: 1.3,
+    pos: [-12, 0, 10],
+    rotY: -Math.PI / 4,
+  },
+  { file: "Coin.glb", scale: 0.7, pos: [-10, 0, 12], rotY: 0 },
+  { file: "Parchment.glb", scale: 1.2, pos: [2, 0, 10], rotY: 0 },
+  { file: "Scroll.glb", scale: 1.1, pos: [3, 0, 9], rotY: 0 },
+  { file: "Statue.glb", scale: 2.5, pos: [10, 0, -10], rotY: Math.PI / 1.5 },
+  { file: "Rock.glb", scale: 3.0, pos: [14, 0, 8], rotY: 0 },
+  { file: "Rocks.glb", scale: 3.5, pos: [-15, 0, -12], rotY: 0 },
+];
+
+objects.forEach((obj) => {
+  loader.load(`models/${obj.file}`, (gltf) => {
+    const model = gltf.scene;
+    const [x, , z] = obj.pos;
+    const y = getIslandHeight(x, z) + 0.5; // lift slightly above terrain
+    model.position.set(x, y, z);
+    model.scale.set(obj.scale, obj.scale, obj.scale);
+    model.rotation.y = obj.rotY;
+    model.traverse((o) => {
+      if (o.isMesh) {
+        o.castShadow = true;
+        o.receiveShadow = true;
+      }
+    });
+    scene.add(model);
+  });
+});
+
+// ======== HEIGHT FUNCTION (for placing objects accurately) ========
 function getIslandHeight(x, z) {
   const dist = Math.sqrt(x * x + z * z);
-  return Math.max(0, 2.5 - dist * 0.08);
+  const baseHeight = Math.max(0, 4 - dist * 0.08);
+  const randomVariation = Math.random() * 0.3;
+  return baseHeight + randomVariation;
+}
+
+// ======== TREES & ROCKS ACROSS ISLAND ========
+function createCoconutTree(x, z, heightBoost = 0) {
+  const tree = new THREE.Group();
+  const trunkHeight = 14 + Math.random() * 3 + heightBoost;
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.45, 0.7, trunkHeight, 12),
+    new THREE.MeshStandardMaterial({ color: 0x8b5a2b, roughness: 0.8 })
+  );
+  trunk.position.y = trunkHeight / 2;
+  tree.add(trunk);
+
+  // Leaves
+  const leafMat = new THREE.MeshStandardMaterial({
+    color: 0x1f6b2b,
+    emissive: 0x143d18,
+    roughness: 0.7,
+    side: THREE.DoubleSide,
+  });
+  const leafGeo = new THREE.PlaneGeometry(8, 2, 8, 1);
+  for (let i = 0; i < 8; i++) {
+    const leaf = new THREE.Mesh(leafGeo, leafMat);
+    leaf.position.y = trunkHeight;
+    leaf.rotation.y = (i * Math.PI * 2) / 8;
+    leaf.rotation.z = -Math.PI / 4;
+    const pos = leaf.geometry.attributes.position;
+    for (let j = 0; j < pos.count; j++) {
+      const x = pos.getX(j);
+      pos.setZ(j, Math.sin((x / 8) * Math.PI) * 0.7);
+    }
+    pos.needsUpdate = true;
+    tree.add(leaf);
+  }
+
+  // Coconuts
+  const coconutGeo = new THREE.SphereGeometry(0.45, 16, 16);
+  const coconutMat = new THREE.MeshStandardMaterial({ color: 0xa8d47a });
+  for (let i = 0; i < 3 + Math.floor(Math.random() * 2); i++) {
+    const nut = new THREE.Mesh(coconutGeo, coconutMat);
+    const angle = (i * Math.PI * 2) / 3;
+    nut.position.set(
+      Math.sin(angle) * 0.7,
+      trunkHeight - 1.0,
+      Math.cos(angle) * 0.7
+    );
+    tree.add(nut);
+  }
+
+  tree.position.set(x, 1.5, z); // keep above terrain
+  scene.add(tree);
+}
+
+// Generate 20 trees randomly across island
+for (let i = 0; i < 35; i++) {
+  // instead of 20
+  const angle = Math.random() * Math.PI * 2;
+  const radius = 8 + Math.random() * 40;
+  const x = Math.cos(angle) * radius;
+  const z = Math.sin(angle) * radius;
+  if (Math.sqrt(x * x + z * z) < 50) createCoconutTree(x, z);
+}
+
+for (let i = 0; i < 15; i++) {
+  // instead of 8
+  const rock = new THREE.Mesh(
+    new THREE.DodecahedronGeometry(3 + Math.random() * 2),
+    new THREE.MeshStandardMaterial({
+      color: 0x888888,
+      roughness: 1.0,
+      metalness: 0.2,
+    })
+  );
+  const angle = Math.random() * Math.PI * 2;
+  const radius = 15 + Math.random() * 40;
+  rock.position.set(Math.cos(angle) * radius, 1, Math.sin(angle) * radius);
+  rock.castShadow = true;
+  rock.receiveShadow = true;
+  scene.add(rock);
 }
 
 // ======== SEA ========
@@ -92,43 +213,8 @@ sea.position.y = 0.3;
 sea.receiveShadow = true;
 scene.add(sea);
 
-// ======== TREES ========
-function createCoconutTree(x, z) {
-  const tree = new THREE.Group();
-  const trunkHeight = 10 + Math.random() * 3;
-  const trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.4, 0.7, trunkHeight, 10),
-    new THREE.MeshStandardMaterial({ color: 0x8b5a2b })
-  );
-  trunk.position.y = trunkHeight / 2;
-  tree.add(trunk);
-
-  const leafMat = new THREE.MeshStandardMaterial({
-    color: 0x1f6b2b,
-    side: THREE.DoubleSide,
-  });
-  for (let i = 0; i < 6; i++) {
-    const leaf = new THREE.Mesh(new THREE.PlaneGeometry(6, 2), leafMat);
-    leaf.position.y = trunkHeight;
-    leaf.rotation.y = (i * Math.PI * 2) / 6;
-    leaf.rotation.z = -Math.PI / 4;
-    tree.add(leaf);
-  }
-
-  tree.position.set(x, getIslandHeight(x, z) + 1, z);
-  scene.add(tree);
-}
-
-for (let i = 0; i < 25; i++) {
-  const angle = Math.random() * Math.PI * 2;
-  const radius = 8 + Math.random() * 40;
-  const x = Math.cos(angle) * radius;
-  const z = Math.sin(angle) * radius;
-  if (Math.sqrt(x * x + z * z) < 55) createCoconutTree(x, z);
-}
-
 // ======== MODELS ========
-const loader = new GLTFLoader();
+
 let girlModel,
   girlController,
   chestModel,
